@@ -526,9 +526,7 @@ class Session(SessionRedirectMixin):
             'allow_redirects': allow_redirects,
         }
         send_kwargs.update(settings)
-        resp = self.send(prep, **send_kwargs)
-
-        return resp
+        return self.send(prep, **send_kwargs)
 
     def get(self, url, **kwargs):
         r"""Sends a GET request. Returns :class:`Response` object.
@@ -664,7 +662,7 @@ class Session(SessionRedirectMixin):
         if allow_redirects:
             # Redirect resolving generator.
             gen = self.resolve_redirects(r, request, **kwargs)
-            history = [resp for resp in gen]
+            history = list(gen)
         else:
             history = []
 
@@ -748,8 +746,7 @@ class Session(SessionRedirectMixin):
             self.adapters[key] = self.adapters.pop(key)
 
     def __getstate__(self):
-        state = {attr: getattr(self, attr, None) for attr in self.__attrs__}
-        return state
+        return {attr: getattr(self, attr, None) for attr in self.__attrs__}
 
     def __setstate__(self, state):
         for attr, value in state.items():

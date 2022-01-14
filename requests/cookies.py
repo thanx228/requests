@@ -303,14 +303,10 @@ class RequestsCookieJar(cookielib.CookieJar, MutableMapping):
 
         :rtype: dict
         """
-        dictionary = {}
-        for cookie in iter(self):
-            if (
+        return {cookie.name: cookie.value for cookie in iter(self) if (
                 (domain is None or cookie.domain == domain) and
                 (path is None or cookie.path == path)
-            ):
-                dictionary[cookie.name] = cookie.value
-        return dictionary
+            )}
 
     def __contains__(self, name):
         try:
@@ -366,10 +362,12 @@ class RequestsCookieJar(cookielib.CookieJar, MutableMapping):
         :return: cookie.value
         """
         for cookie in iter(self):
-            if cookie.name == name:
-                if domain is None or cookie.domain == domain:
-                    if path is None or cookie.path == path:
-                        return cookie.value
+            if (
+                cookie.name == name
+                and (domain is None or cookie.domain == domain)
+                and (path is None or cookie.path == path)
+            ):
+                return cookie.value
 
         raise KeyError('name=%r, domain=%r, path=%r' % (name, domain, path))
 
@@ -387,12 +385,14 @@ class RequestsCookieJar(cookielib.CookieJar, MutableMapping):
         """
         toReturn = None
         for cookie in iter(self):
-            if cookie.name == name:
-                if domain is None or cookie.domain == domain:
-                    if path is None or cookie.path == path:
-                        if toReturn is not None:  # if there are multiple cookies that meet passed in criteria
-                            raise CookieConflictError('There are multiple cookies with name, %r' % (name))
-                        toReturn = cookie.value  # we will eventually return this as long as no cookie conflict
+            if (
+                cookie.name == name
+                and (domain is None or cookie.domain == domain)
+                and (path is None or cookie.path == path)
+            ):
+                if toReturn is not None:  # if there are multiple cookies that meet passed in criteria
+                    raise CookieConflictError('There are multiple cookies with name, %r' % (name))
+                toReturn = cookie.value  # we will eventually return this as long as no cookie conflict
 
         if toReturn:
             return toReturn

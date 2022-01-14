@@ -81,9 +81,8 @@ if sys.platform == 'win32':
         proxyOverride = proxyOverride.split(';')
         # now check if we match one of the registry values.
         for test in proxyOverride:
-            if test == '<local>':
-                if '.' not in host:
-                    return True
+            if test == '<local>' and '.' not in host:
+                return True
             test = test.replace(".", r"\.")     # mask dots
             test = test.replace("*", r".*")     # change glob sequence
             test = test.replace("?", r".")      # change glob char
@@ -448,12 +447,7 @@ def dict_from_cookiejar(cj):
     :rtype: dict
     """
 
-    cookie_dict = {}
-
-    for cookie in cj:
-        cookie_dict[cookie.name] = cookie.value
-
-    return cookie_dict
+    return {cookie.name: cookie.value for cookie in cj}
 
 
 def add_dict_to_cookiejar(cj, cookie_dict):
@@ -541,8 +535,7 @@ def stream_decode_response_unicode(iterator, r):
     """Stream decodes a iterator."""
 
     if r.encoding is None:
-        for item in iterator:
-            yield item
+        yield from iterator
         return
 
     decoder = codecs.getincrementaldecoder(r.encoding)(errors='replace')
@@ -583,12 +576,12 @@ def get_unicode_from_response(r):
         ' warning should only appear once.)'),
         DeprecationWarning)
 
-    tried_encodings = []
-
     # Try charset from content-type
     encoding = get_encoding_from_headers(r.headers)
 
     if encoding:
+        tried_encodings = []
+
         try:
             return str(r.content, encoding)
         except UnicodeError:
@@ -614,17 +607,14 @@ def unquote_unreserved(uri):
     """
     parts = uri.split('%')
     for i in range(1, len(parts)):
-        h = parts[i][0:2]
+        h = parts[i][:2]
         if len(h) == 2 and h.isalnum():
             try:
                 c = chr(int(h, 16))
             except ValueError:
                 raise InvalidURL("Invalid percent-escape sequence: '%s'" % h)
 
-            if c in UNRESERVED_SET:
-                parts[i] = c + parts[i][2:]
-            else:
-                parts[i] = '%' + parts[i]
+            parts[i] = c + parts[i][2:] if c in UNRESERVED_SET else '%' + parts[i]
         else:
             parts[i] = '%' + parts[i]
     return ''.join(parts)
@@ -695,20 +685,19 @@ def is_valid_cidr(string_network):
 
     :rtype: bool
     """
-    if string_network.count('/') == 1:
-        try:
-            mask = int(string_network.split('/')[1])
-        except ValueError:
-            return False
+    if string_network.count('/') != 1:
+        return False
+    try:
+        mask = int(string_network.split('/')[1])
+    except ValueError:
+        return False
 
-        if mask < 1 or mask > 32:
-            return False
+    if mask < 1 or mask > 32:
+        return False
 
-        try:
-            socket.inet_aton(string_network.split('/')[0])
-        except socket.error:
-            return False
-    else:
+    try:
+        socket.inet_aton(string_network.split('/')[0])
+    except socket.error:
         return False
     return True
 
@@ -765,12 +754,12 @@ def should_bypass_proxies(url, no_proxy):
 
         if is_ipv4_address(parsed.hostname):
             for proxy_ip in no_proxy:
-                if is_valid_cidr(proxy_ip):
-                    if address_in_network(parsed.hostname, proxy_ip):
-                        return True
-                elif parsed.hostname == proxy_ip:
-                    # If no_proxy ip was defined in plain IP notation instead of cidr notation &
-                    # matches the IP of the index
+                if (
+                    is_valid_cidr(proxy_ip)
+                    and address_in_network(parsed.hostname, proxy_ip)
+                    or not is_valid_cidr(proxy_ip)
+                    and parsed.hostname == proxy_ip
+                ):
                     return True
         else:
             host_with_port = parsed.hostname
@@ -802,10 +791,7 @@ def get_environ_proxies(url, no_proxy=None):
 
     :rtype: dict
     """
-    if should_bypass_proxies(url, no_proxy=no_proxy):
-        return {}
-    else:
-        return getproxies()
+    return {} if should_bypass_proxies(url, no_proxy=no_proxy) else getproxies()
 
 
 def select_proxy(url, proxies):
@@ -947,13 +933,11 @@ def guess_json_utf(data):
             return 'utf-16-be'
         if sample[1::2] == _null2:  # 2nd and 4th are null
             return 'utf-16-le'
-        # Did not detect 2 valid UTF-16 ascii-range characters
-    if nullcount == 3:
+    elif nullcount == 3:
         if sample[:3] == _null3:
             return 'utf-32-be'
         if sample[1:] == _null3:
             return 'utf-32-le'
-        # Did not detect a valid UTF-32 ascii-range character
     return None
 
 
