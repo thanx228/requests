@@ -215,12 +215,8 @@ class HTTPAdapter(BaseAdapter):
         """
         if url.lower().startswith('https') and verify:
 
-            cert_loc = None
 
-            # Allow self-specified cert location.
-            if verify is not True:
-                cert_loc = verify
-
+            cert_loc = verify if verify is not True else None
             if not cert_loc:
                 cert_loc = extract_zipped_paths(DEFAULT_CA_BUNDLE_PATH)
 
@@ -308,14 +304,12 @@ class HTTPAdapter(BaseAdapter):
                 raise InvalidProxyURL("Please check proxy URL. It is malformed"
                                       " and could be missing the host.")
             proxy_manager = self.proxy_manager_for(proxy)
-            conn = proxy_manager.connection_from_url(url)
+            return proxy_manager.connection_from_url(url)
         else:
             # Only scheme should be lower case
             parsed = urlparse(url)
             url = parsed.geturl()
-            conn = self.poolmanager.connection_from_url(url)
-
-        return conn
+            return self.poolmanager.connection_from_url(url)
 
     def close(self):
         """Disposes of any internal state.
@@ -418,7 +412,7 @@ class HTTPAdapter(BaseAdapter):
         url = self.request_url(request, proxies)
         self.add_headers(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
 
-        chunked = not (request.body is None or 'Content-Length' in request.headers)
+        chunked = request.body is not None and 'Content-Length' not in request.headers
 
         if isinstance(timeout, tuple):
             try:
@@ -430,9 +424,7 @@ class HTTPAdapter(BaseAdapter):
                        "timeout tuple, or a single float to set "
                        "both timeouts to the same value".format(timeout))
                 raise ValueError(err)
-        elif isinstance(timeout, TimeoutSauce):
-            pass
-        else:
+        elif not isinstance(timeout, TimeoutSauce):
             timeout = TimeoutSauce(connect=timeout, read=timeout)
 
         try:
@@ -501,10 +493,10 @@ class HTTPAdapter(BaseAdapter):
             raise ConnectionError(err, request=request)
 
         except MaxRetryError as e:
-            if isinstance(e.reason, ConnectTimeoutError):
-                # TODO: Remove this in 3.0.0: see #2811
-                if not isinstance(e.reason, NewConnectionError):
-                    raise ConnectTimeout(e, request=request)
+            if isinstance(e.reason, ConnectTimeoutError) and not isinstance(
+                e.reason, NewConnectionError
+            ):
+                raise ConnectTimeout(e, request=request)
 
             if isinstance(e.reason, ResponseError):
                 raise RetryError(e, request=request)

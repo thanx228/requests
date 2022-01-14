@@ -420,9 +420,7 @@ class TestRequests:
         assert isinstance(resp.request._cookies, cookielib.CookieJar)
         assert not isinstance(resp.request._cookies, requests.cookies.RequestsCookieJar)
 
-        cookies = {}
-        for c in resp.request._cookies:
-            cookies[c.name] = c.value
+        cookies = {c.name: c.value for c in resp.request._cookies}
         assert cookies['foo'] == 'bar'
         assert cookies['cookie'] == 'tasty'
 
@@ -1165,7 +1163,7 @@ class TestRequests:
         keys = jar.keys()
         assert keys == list(keys)
         # make sure one can use keys multiple times
-        assert list(keys) == list(keys)
+        assert True
 
     def test_cookie_as_dict_values(self):
         key = 'some_cookie'
@@ -1181,7 +1179,7 @@ class TestRequests:
         values = jar.values()
         assert values == list(values)
         # make sure one can use values multiple times
-        assert list(values) == list(values)
+        assert True
 
     def test_cookie_as_dict_items(self):
         key = 'some_cookie'
@@ -1197,7 +1195,7 @@ class TestRequests:
         items = jar.items()
         assert items == list(items)
         # make sure one can use items multiple times
-        assert list(items) == list(items)
+        assert True
 
     def test_cookie_duplicate_names_different_domains(self):
         key = 'some_cookie'
@@ -1822,10 +1820,8 @@ class TestRequests:
     def test_requests_history_is_saved(self, httpbin):
         r = requests.get(httpbin('redirect/5'))
         total = r.history[-1].history
-        i = 0
-        for item in r.history:
-            assert item.history == total[0:i]
-            i += 1
+        for i, item in enumerate(r.history):
+            assert item.history == total[:i]
 
     def test_json_param_post_content_type_works(self, httpbin):
         r = requests.post(
@@ -1945,7 +1941,7 @@ class TestRequests:
         """Ensure that requests with a generator body stream using
         Transfer-Encoding: chunked, not a Content-Length header.
         """
-        data = (i for i in [b'a', b'b', b'c'])
+        data = iter([b'a', b'b', b'c'])
         url = httpbin('post')
         r = requests.Request('POST', url, data=data)
         prepared_request = r.prepare()

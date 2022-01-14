@@ -64,16 +64,13 @@ class RequestEncodingMixin(object):
     def path_url(self):
         """Build the path URL to use."""
 
-        url = []
-
         p = urlsplit(self.url)
 
         path = p.path
         if not path:
             path = '/'
 
-        url.append(path)
-
+        url = [path]
         query = p.query
         if query:
             url.append('?')
@@ -90,23 +87,22 @@ class RequestEncodingMixin(object):
         if parameters are supplied as a dict.
         """
 
-        if isinstance(data, (str, bytes)):
+        if (
+            isinstance(data, (str, bytes))
+            or hasattr(data, 'read')
+            or not hasattr(data, '__iter__')
+        ):
             return data
-        elif hasattr(data, 'read'):
-            return data
-        elif hasattr(data, '__iter__'):
-            result = []
-            for k, vs in to_key_val_list(data):
-                if isinstance(vs, basestring) or not hasattr(vs, '__iter__'):
-                    vs = [vs]
-                for v in vs:
-                    if v is not None:
-                        result.append(
-                            (k.encode('utf-8') if isinstance(k, str) else k,
-                             v.encode('utf-8') if isinstance(v, str) else v))
-            return urlencode(result, doseq=True)
-        else:
-            return data
+        result = []
+        for k, vs in to_key_val_list(data):
+            if isinstance(vs, basestring) or not hasattr(vs, '__iter__'):
+                vs = [vs]
+            for v in vs:
+                if v is not None:
+                    result.append(
+                        (k.encode('utf-8') if isinstance(k, str) else k,
+                         v.encode('utf-8') if isinstance(v, str) else v))
+        return urlencode(result, doseq=True)
 
     @staticmethod
     def _encode_files(files, data):
@@ -155,15 +151,16 @@ class RequestEncodingMixin(object):
                 fn = guess_filename(v) or k
                 fp = v
 
-            if isinstance(fp, (str, bytes, bytearray)):
+            if (
+                isinstance(fp, (str, bytes, bytearray))
+                or not hasattr(fp, 'read')
+                and fp is not None
+            ):
                 fdata = fp
             elif hasattr(fp, 'read'):
                 fdata = fp.read()
-            elif fp is None:
-                continue
             else:
-                fdata = fp
-
+                continue
             rf = RequestField(name=k, data=fdata, filename=fn, headers=fh)
             rf.make_multipart(content_type=ft)
             new_fields.append(rf)
@@ -435,11 +432,7 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
 
         enc_params = self._encode_params(params)
         if enc_params:
-            if query:
-                query = '%s&%s' % (query, enc_params)
-            else:
-                query = enc_params
-
+            query = '%s&%s' % (query, enc_params) if query else enc_params
         url = requote_uri(urlunparse([scheme, netloc, path, None, query, fragment]))
         self.url = url
 
@@ -512,13 +505,12 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
             # Multi-part file uploads.
             if files:
                 (body, content_type) = self._encode_files(files, data)
-            else:
-                if data:
-                    body = self._encode_params(data)
-                    if isinstance(data, basestring) or hasattr(data, 'read'):
-                        content_type = None
-                    else:
-                        content_type = 'application/x-www-form-urlencoded'
+            elif data:
+                body = self._encode_params(data)
+                if isinstance(data, basestring) or hasattr(data, 'read'):
+                    content_type = None
+                else:
+                    content_type = 'application/x-www-form-urlencoded'
 
             self.prepare_content_length(body)
 
@@ -757,8 +749,7 @@ class Response(object):
             # Special case for urllib3.
             if hasattr(self.raw, 'stream'):
                 try:
-                    for chunk in self.raw.stream(chunk_size, decode_content=True):
-                        yield chunk
+                    yield from self.raw.stream(chunk_size, decode_content=True)
                 except ProtocolError as e:
                     raise ChunkedEncodingError(e)
                 except DecodeError as e:
@@ -806,19 +797,13 @@ class Response(object):
             if pending is not None:
                 chunk = pending + chunk
 
-            if delimiter:
-                lines = chunk.split(delimiter)
-            else:
-                lines = chunk.splitlines()
-
+            lines = chunk.split(delimiter) if delimiter else chunk.splitlines()
             if lines and lines[-1] and chunk and lines[-1][-1] == chunk[-1]:
                 pending = lines.pop()
             else:
                 pending = None
 
-            for line in lines:
-                yield line
-
+            yield from lines
         if pending is not None:
             yield pending
 
